@@ -10,12 +10,13 @@ A modern Perplexity-like search application built with NextJS and FastAPI.
 
 ## Features
 
-- 🔍 Real-time search interface
+- 🔍 Real-time web search using DuckDuckGo (free)
 - 💬 Conversational UI with chat history
 - 📱 Responsive design for all devices
 - 🎨 Modern dark/light theme support
-- ⚡ Fast API responses with mock data
+- ⚡ AI-powered search responses with GPT-4o-mini
 - 🔗 Source citations and result display
+- 📊 Search limit: Max 3 searches per query for efficiency
 
 ## Quick Start
 
@@ -26,20 +27,20 @@ A modern Perplexity-like search application built with NextJS and FastAPI.
 cd backend
 ```
 
-2. Create a virtual environment:
+2. Install dependencies using UV:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+uv sync
 ```
 
-3. Install dependencies:
+3. Set up environment variables:
 ```bash
-pip install -r requirements.txt
+# Your OpenAI API key will be automatically detected from your environment
+# The .env file is already configured to use it
 ```
 
 4. Run the FastAPI server:
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at http://localhost:8000
@@ -79,16 +80,23 @@ Make sure both servers are running:
 
 The frontend will communicate with the backend API to provide search functionality.
 
+## How It Works
+
+1. **Free Web Search**: Uses DuckDuckGo for web search (no API key required)
+2. **AI Processing**: OpenAI GPT-4o-mini analyzes search results and provides comprehensive answers
+3. **Search Optimization**: Limited to 3 searches per query to manage costs and improve response times
+4. **Source Extraction**: Automatically extracts and displays sources from search results
+
 ## Next Steps
 
 To enhance this application, you can:
 
-1. **Add real search providers** (Google, Bing, DuckDuckGo APIs)
-2. **Integrate AI/LLM services** (OpenAI, Anthropic, local models)
-3. **Add authentication** and user management
-4. **Implement database** for conversation history
-5. **Add caching** with Redis for better performance
-6. **Deploy to production** (Vercel + Railway/Render)
+1. **Add more search providers** (Bing, Google Custom Search)
+2. **Add authentication** and user management
+3. **Implement database** for conversation history
+4. **Add caching** with Redis for better performance
+5. **Deploy to production** (Vercel + Railway/Render)
+6. **Add search result parsing** for better source extraction
 
 ## License
 

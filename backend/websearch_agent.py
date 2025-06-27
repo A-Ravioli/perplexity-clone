@@ -30,20 +30,46 @@ from langchain.agents import AgentType, initialize_agent, Tool
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import AgentAction, AgentFinish, LLMResult
 from langchain_openai import ChatOpenAI
-from langchain_community.utilities import SerpAPIWrapper
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from functools import wraps
 from langchain.memory import ConversationBufferMemory
 from dotenv import load_dotenv
 
-# Import Amplitude agent analytics
-import sys
-sys.path.append('/Users/arav.kumar/Desktop/code/amp/amplitude')  # Adjust path as needed
+# Mock Amplitude analytics for simplified setup
+class MockAgentAnalyticsTracker:
+    """Mock analytics tracker for demonstration."""
+    def __init__(self, run_context):
+        self.run_context = run_context
+    
+    def emit_agent_run_started(self, **kwargs):
+        print(f"📊 Analytics: Run started with {kwargs}")
+    
+    def emit_user_message(self, **kwargs):
+        print(f"📊 Analytics: User message tracked")
+    
+    def emit_agent_message(self, **kwargs):
+        print(f"📊 Analytics: Agent message tracked")
+    
+    def emit_agent_tool_called(self, **kwargs):
+        print(f"📊 Analytics: Tool called - {kwargs.get('tool_name', 'unknown')}")
+    
+    def emit_agent_run_completed(self, **kwargs):
+        print(f"📊 Analytics: Run completed with quality score {kwargs.get('completion_quality_score', 0)}")
+    
+    def estimate_cost_from_text(self, model_name, input_text, output_text):
+        # Rough cost estimation for GPT-4o-mini
+        input_tokens = len(input_text.split()) * 1.3
+        output_tokens = len(output_text.split()) * 1.3
+        # GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens
+        cost = (input_tokens * 0.15 / 1_000_000) + (output_tokens * 0.60 / 1_000_000)
+        return cost
 
-from langley.langley.analytics.agent_events import (
-    AgentAnalyticsTracker,
-    AgentAnalyticsConfig,
-    configure_agent_analytics
-)
+def configure_agent_analytics(**kwargs):
+    """Mock configure function."""
+    print("📊 Analytics configured (mock)")
+
+# Use mock analytics
+AgentAnalyticsTracker = MockAgentAnalyticsTracker
 
 # Mock run context for demonstration - in production, use actual LangleyRunContext
 @dataclass
@@ -130,11 +156,9 @@ class WebSearchAgent:
     def __init__(
         self, 
         openai_api_key: str,
-        amplitude_api_key: str,
+        amplitude_api_key: str = "demo_key",
         model_name: str = "gpt-4o-mini",
-        temperature: float = 0.1,
-        use_serpapi: bool = False,
-        serpapi_key: Optional[str] = None
+        temperature: float = 0.1
     ):
         self.openai_api_key = openai_api_key
         self.amplitude_api_key = amplitude_api_key
@@ -160,8 +184,8 @@ class WebSearchAgent:
             openai_api_key=openai_api_key
         )
         
-        # Set up search tools
-        self.search_tools = self._setup_search_tools(use_serpapi, serpapi_key)
+        # Set up search tools (DuckDuckGo only)
+        self.search_tools = self._setup_search_tools()
         
         # Initialize memory
         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
@@ -170,29 +194,33 @@ class WebSearchAgent:
         self.current_run_id = None
         self.session_start_time = None
         self.conversation_history = []
+        self.search_count = 0  # Track searches per query
         
-    def _setup_search_tools(self, use_serpapi: bool, serpapi_key: Optional[str]) -> List[Tool]:
-        """Set up web search tools."""
+    def _setup_search_tools(self, use_serpapi: bool = False, serpapi_key: Optional[str] = None) -> List[Tool]:
+        """Set up web search tools using only DuckDuckGo."""
         tools = []
         
-        if use_serpapi and serpapi_key:
-            # Use SerpAPI (Google Search) - more reliable but requires API key
-            search = SerpAPIWrapper(serpapi_api_key=serpapi_key)
-            tools.append(
-                Tool(
-                    name="Google Search",
-                    description="Search Google for recent information and news. Use this for current events, facts, and up-to-date information.",
-                    func=search.run,
-                )
-            )
+        # Use DuckDuckGo search (free)
+        ddg_search = DuckDuckGoSearchAPIWrapper(max_results=3)  # Limit to 3 results per search
         
-        # Always include DuckDuckGo as backup (free but less reliable)
-        ddg_search = DuckDuckGoSearchAPIWrapper()
+        def limited_search(query: str) -> str:
+            """Wrapper to limit searches per conversation."""
+            if self.search_count >= 3:
+                return "Search limit reached (3 searches per query). Please use the information already gathered or ask a new question."
+            
+            self.search_count += 1
+            print(f"🔍 Search {self.search_count}/3: {query}")
+            try:
+                result = ddg_search.run(query)
+                return result
+            except Exception as e:
+                return f"Search failed: {str(e)}"
+        
         tools.append(
             Tool(
                 name="DuckDuckGo Search",
-                description="Search the web using DuckDuckGo. Good for general information, definitions, and basic facts.",
-                func=ddg_search.run,
+                description="Search the web using DuckDuckGo. Use this for current information, facts, and general knowledge. You have a maximum of 3 searches per user query - use them wisely!",
+                func=limited_search,
             )
         )
         
@@ -255,6 +283,9 @@ class WebSearchAgent:
             verbose=True,
             handle_parsing_errors=True
         )
+        
+        # Reset search count for new query
+        self.search_count = 0
         
         # Measure response time
         start_time = time.time()
@@ -435,3 +466,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

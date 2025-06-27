@@ -11,25 +11,20 @@ This is the backend API for the Perplexity clone application built with FastAPI.
 
 ## Setup
 
-1. Create a virtual environment:
+1. Install dependencies using UV:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+uv sync
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Copy environment variables:
+2. Set up environment variables:
 ```bash
 cp .env.example .env
+# Edit .env and add your API keys
 ```
 
-4. Run the development server:
+3. Run the development server:
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API Endpoints
