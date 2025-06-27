@@ -71,12 +71,33 @@ class AgentAnalyticsTracker:
             )
             
             result = self.client.track(event)
-            print(f"📊 ✅ Sent to Amplitude: {event_type}")
-            print(f"   Properties: {properties}")
+            
+            # Enhanced logging with response details
+            if hasattr(result, 'status_code'):
+                print(f"📊 ✅ Sent to Amplitude: {event_type} (Status: {result.status_code})")
+            else:
+                print(f"📊 ✅ Sent to Amplitude: {event_type}")
+            
+            # Log key properties (truncated for readability)
+            key_props = {k: (v[:50] + "..." if isinstance(v, str) and len(v) > 50 else v) 
+                        for k, v in properties.items() if k in ['agent_run_id', 'message_id', 'tool_name', 'model_name']}
+            print(f"   Key Properties: {key_props}")
+            
+            # Return result for further inspection if needed
+            return result
             
         except Exception as e:
             print(f"📊 ❌ Failed to send to Amplitude: {e}")
-            print(f"   Event: {event_type}, Properties: {properties}")
+            print(f"   Event: {event_type}")
+            print(f"   Error Type: {type(e).__name__}")
+            print(f"   Key Properties: {properties.get('agent_run_id', 'N/A')} | {properties.get('message_id', 'N/A')}")
+            
+            # Re-raise for debugging if needed
+            if hasattr(e, 'response'):
+                print(f"   HTTP Status: {getattr(e.response, 'status_code', 'Unknown')}")
+                print(f"   HTTP Response: {getattr(e.response, 'text', 'Unknown')}")
+            
+            return None
     
     def emit_agent_run_started(self, **kwargs):
         """Emit agent_run_started event using BaseEvent with proper schema."""
@@ -171,6 +192,33 @@ class AgentAnalyticsTracker:
         # GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens
         cost = (input_tokens * 0.15 / 1_000_000) + (output_tokens * 0.60 / 1_000_000)
         return cost
+    
+    def test_connection(self):
+        """Test the Amplitude connection by sending a simple test event."""
+        print("🧪 Testing Amplitude connection...")
+        
+        if not self.enabled:
+            print("❌ Amplitude is disabled - cannot test connection")
+            return False
+        
+        try:
+            result = self._send_event("test_connection", {
+                "test_timestamp": datetime.now().isoformat(),
+                "test_user_id": self.run_context.session.user_id,
+                "test_app_id": str(self.run_context.session.app_id),
+                "test_message": "Connection test from websearch_agent"
+            })
+            
+            if result is not None:
+                print("✅ Amplitude connection test successful!")
+                return True
+            else:
+                print("❌ Amplitude connection test failed!")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Amplitude connection test failed with error: {e}")
+            return False
 
 def configure_agent_analytics(**kwargs):
     """Configure Amplitude analytics."""
@@ -281,6 +329,10 @@ class WebSearchAgent:
         # Initialize mock run context
         self.run_context = MockRunContext(session=MockSession())
         self.analytics_tracker = AgentAnalyticsTracker(self.run_context, amplitude_api_key)
+        
+        # Test Amplitude connection
+        if amplitude_api_key != "demo_key":
+            self.analytics_tracker.test_connection()
         
         # Initialize OpenAI
         self.llm = ChatOpenAI(
@@ -564,6 +616,11 @@ def main():
     finally:
         # End the conversation and emit completion analytics
         agent.end_conversation()
+        
+        # Optional: Test connection manually
+        print("\n🧪 Running final connection test...")
+        agent.analytics_tracker.test_connection()
+        
         print("\n👋 Thanks for using the Web Search Agent!")
 
 
