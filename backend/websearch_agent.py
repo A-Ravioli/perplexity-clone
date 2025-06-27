@@ -56,7 +56,7 @@ class AgentAnalyticsTracker:
             print("📊 Amplitude Analytics disabled (no valid API key)")
     
     def _send_event(self, event_type, properties):
-        """Send event to Amplitude."""
+        """Send event to Amplitude using BaseEvent."""
         if not self.enabled or not self.client:
             print(f"📊 [DISABLED] {event_type}: {properties}")
             return
@@ -79,65 +79,95 @@ class AgentAnalyticsTracker:
             print(f"   Event: {event_type}, Properties: {properties}")
     
     def emit_agent_run_started(self, **kwargs):
+        """Emit agent_run_started event using BaseEvent with proper schema."""
         self._send_event("agent_run_started", {
             "agent_id": kwargs.get("agent_id"),
-            "session_id": kwargs.get("session_id"),
-            "run_id": kwargs.get("run_id"),
+            "agent_run_id": kwargs.get("run_id"),
+            "app_id": str(self.run_context.session.app_id),
+            "device_id": self.run_context.session.device_id,
+            "org_id": str(self.run_context.session.org_id),
+            "session_id": self.run_context.session.session_id,
             "model_name": kwargs.get("model_name"),
-            "temperature": kwargs.get("temperature"),
-            "agent_type": kwargs.get("agent_type"),
-            "tools_available": kwargs.get("tools_available")
+            "temperature": str(kwargs.get("temperature", 0.1)),
+            "prompt_hash": kwargs.get("prompt_hash", ""),
         })
     
     def emit_user_message(self, **kwargs):
+        """Emit user_message event using BaseEvent with proper schema."""
         self._send_event("user_message", {
-            "run_id": kwargs.get("run_id"),
+            "agent_run_id": kwargs.get("run_id"),
             "message_id": kwargs.get("message_id"),
-            "message_length": len(kwargs.get("message_content", "")),
-            "timestamp": datetime.now().isoformat()
+            "message_content": kwargs.get("message_content", ""),
+            "app_id": str(self.run_context.session.app_id),
+            "device_id": self.run_context.session.device_id,
+            "org_id": str(self.run_context.session.org_id),
+            "session_id": self.run_context.session.session_id,
         })
     
     def emit_agent_message(self, **kwargs):
+        """Emit agent_message event using BaseEvent with proper schema."""
+        # Calculate cost
+        cost_usd = self.estimate_cost_from_tokens(
+            kwargs.get("model_name", "gpt-4o-mini"),
+            kwargs.get("input_tokens", 0),
+            kwargs.get("output_tokens", 0)
+        )
+        
         self._send_event("agent_message", {
-            "run_id": kwargs.get("run_id"),
+            "agent_run_id": kwargs.get("run_id"),
             "message_id": kwargs.get("message_id"),
+            "message_content": kwargs.get("message_content", ""),
             "model_name": kwargs.get("model_name"),
-            "temperature": kwargs.get("temperature"),
-            "input_tokens": kwargs.get("input_tokens"),
-            "output_tokens": kwargs.get("output_tokens"),
-            "latency_ms": kwargs.get("latency_ms"),
-            "cost_estimate": self.estimate_cost_from_text(
-                kwargs.get("model_name", "gpt-4o-mini"),
-                "",  # We don't have the original input here
-                kwargs.get("message_content", "")
-            ),
-            "response_length": len(kwargs.get("message_content", "")),
-            "error_occurred": kwargs.get("error_occurred", "false"),
-            "error_message": kwargs.get("error_message")
+            "temperature": str(kwargs.get("temperature", 0.1)),
+            "input_tokens": str(kwargs.get("input_tokens", 0)),
+            "output_tokens": str(kwargs.get("output_tokens", 0)),
+            "cost_usd": str(cost_usd),
+            "latency_ms": str(kwargs.get("latency_ms", 0)),
+            "app_id": str(self.run_context.session.app_id),
+            "device_id": self.run_context.session.device_id,
+            "org_id": str(self.run_context.session.org_id),
+            "session_id": self.run_context.session.session_id,
         })
     
     def emit_agent_tool_called(self, **kwargs):
+        """Emit agent_tool_called event using BaseEvent with proper schema."""
         self._send_event("agent_tool_called", {
-            "run_id": kwargs.get("run_id"),
+            "agent_run_id": kwargs.get("run_id"),
+            "app_id": str(self.run_context.session.app_id),
+            "device_id": self.run_context.session.device_id,
+            "org_id": str(self.run_context.session.org_id),
+            "session_id": self.run_context.session.session_id,
             "tool_name": kwargs.get("tool_name"),
-            "tool_success": kwargs.get("tool_success"),
-            "latency_ms": kwargs.get("latency_ms"),
-            "tokens": kwargs.get("tokens")
+            "tool_success": str(kwargs.get("tool_success", True)),
+            "latency_ms": str(kwargs.get("latency_ms", 0)),
+            "tokens": str(kwargs.get("tokens", 0)),
         })
     
     def emit_agent_run_completed(self, **kwargs):
+        """Emit agent_run_completed event using BaseEvent with proper schema."""
         self._send_event("agent_run_completed", {
-            "run_id": kwargs.get("run_id"),
-            "p95_ttfb_ms": kwargs.get("p95_ttfb_ms"),
-            "completion_quality_score": kwargs.get("completion_quality_score"),
-            "total_session_time_ms": kwargs.get("total_session_time_ms"),
-            "total_interactions": kwargs.get("total_interactions")
+            "agent_run_id": kwargs.get("run_id"),
+            "app_id": str(self.run_context.session.app_id),
+            "device_id": self.run_context.session.device_id,
+            "org_id": str(self.run_context.session.org_id),
+            "session_id": self.run_context.session.session_id,
+            "total_tokens": "0",  # Placeholder - should be calculated from message events
+            "total_cost_usd": "0.0",  # Placeholder - should be calculated from message events
+            "p_95_ttfb_ms": str(kwargs.get("p95_ttfb_ms", 0)),
+            "completion_quality_score": (
+                str(kwargs.get("completion_quality_score")) 
+                if kwargs.get("completion_quality_score") is not None else None
+            ),
         })
     
     def estimate_cost_from_text(self, model_name, input_text, output_text):
-        # Rough cost estimation for GPT-4o-mini
+        """Estimate cost from text strings."""
         input_tokens = len(input_text.split()) * 1.3
         output_tokens = len(output_text.split()) * 1.3
+        return self.estimate_cost_from_tokens(model_name, input_tokens, output_tokens)
+    
+    def estimate_cost_from_tokens(self, model_name, input_tokens, output_tokens):
+        """Estimate cost from token counts."""
         # GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens
         cost = (input_tokens * 0.15 / 1_000_000) + (output_tokens * 0.60 / 1_000_000)
         return cost
@@ -495,8 +525,6 @@ def main():
         amplitude_api_key=AMPLITUDE_API_KEY,
         model_name="gpt-4o-mini",  # Fast and cost-effective
         temperature=0.1,  # Low temperature for factual responses
-        use_serpapi=USE_SERPAPI,
-        serpapi_key=SERPAPI_KEY
     )
     
     # Start conversation
