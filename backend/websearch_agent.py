@@ -35,26 +35,104 @@ from functools import wraps
 from langchain.memory import ConversationBufferMemory
 from dotenv import load_dotenv
 
-# Mock Amplitude analytics for simplified setup
-class MockAgentAnalyticsTracker:
-    """Mock analytics tracker for demonstration."""
-    def __init__(self, run_context):
+# Real Amplitude analytics
+import amplitude
+from amplitude import Amplitude, BaseEvent
+
+class AgentAnalyticsTracker:
+    """Real analytics tracker using Amplitude."""
+    def __init__(self, run_context, api_key="demo_key"):
         self.run_context = run_context
+        self.api_key = api_key
+        
+        # Initialize Amplitude client
+        if api_key and api_key != "demo_key":
+            self.client = Amplitude(api_key)
+            self.enabled = True
+            print(f"📊 Amplitude Analytics initialized with API key: {api_key[:8]}...")
+        else:
+            self.client = None
+            self.enabled = False
+            print("📊 Amplitude Analytics disabled (no valid API key)")
+    
+    def _send_event(self, event_type, properties):
+        """Send event to Amplitude."""
+        if not self.enabled or not self.client:
+            print(f"📊 [DISABLED] {event_type}: {properties}")
+            return
+        
+        try:
+            event = BaseEvent(
+                event_type=event_type,
+                user_id=self.run_context.session.user_id,
+                device_id=self.run_context.session.device_id,
+                session_id=int(self.run_context.session.session_id.replace('demo_session_', '')) if 'demo_session_' in self.run_context.session.session_id else 1,
+                event_properties=properties
+            )
+            
+            result = self.client.track(event)
+            print(f"📊 ✅ Sent to Amplitude: {event_type}")
+            print(f"   Properties: {properties}")
+            
+        except Exception as e:
+            print(f"📊 ❌ Failed to send to Amplitude: {e}")
+            print(f"   Event: {event_type}, Properties: {properties}")
     
     def emit_agent_run_started(self, **kwargs):
-        print(f"📊 Analytics: Run started with {kwargs}")
+        self._send_event("agent_run_started", {
+            "agent_id": kwargs.get("agent_id"),
+            "session_id": kwargs.get("session_id"),
+            "run_id": kwargs.get("run_id"),
+            "model_name": kwargs.get("model_name"),
+            "temperature": kwargs.get("temperature"),
+            "agent_type": kwargs.get("agent_type"),
+            "tools_available": kwargs.get("tools_available")
+        })
     
     def emit_user_message(self, **kwargs):
-        print(f"📊 Analytics: User message tracked")
+        self._send_event("user_message", {
+            "run_id": kwargs.get("run_id"),
+            "message_id": kwargs.get("message_id"),
+            "message_length": len(kwargs.get("message_content", "")),
+            "timestamp": datetime.now().isoformat()
+        })
     
     def emit_agent_message(self, **kwargs):
-        print(f"📊 Analytics: Agent message tracked")
+        self._send_event("agent_message", {
+            "run_id": kwargs.get("run_id"),
+            "message_id": kwargs.get("message_id"),
+            "model_name": kwargs.get("model_name"),
+            "temperature": kwargs.get("temperature"),
+            "input_tokens": kwargs.get("input_tokens"),
+            "output_tokens": kwargs.get("output_tokens"),
+            "latency_ms": kwargs.get("latency_ms"),
+            "cost_estimate": self.estimate_cost_from_text(
+                kwargs.get("model_name", "gpt-4o-mini"),
+                "",  # We don't have the original input here
+                kwargs.get("message_content", "")
+            ),
+            "response_length": len(kwargs.get("message_content", "")),
+            "error_occurred": kwargs.get("error_occurred", "false"),
+            "error_message": kwargs.get("error_message")
+        })
     
     def emit_agent_tool_called(self, **kwargs):
-        print(f"📊 Analytics: Tool called - {kwargs.get('tool_name', 'unknown')}")
+        self._send_event("agent_tool_called", {
+            "run_id": kwargs.get("run_id"),
+            "tool_name": kwargs.get("tool_name"),
+            "tool_success": kwargs.get("tool_success"),
+            "latency_ms": kwargs.get("latency_ms"),
+            "tokens": kwargs.get("tokens")
+        })
     
     def emit_agent_run_completed(self, **kwargs):
-        print(f"📊 Analytics: Run completed with quality score {kwargs.get('completion_quality_score', 0)}")
+        self._send_event("agent_run_completed", {
+            "run_id": kwargs.get("run_id"),
+            "p95_ttfb_ms": kwargs.get("p95_ttfb_ms"),
+            "completion_quality_score": kwargs.get("completion_quality_score"),
+            "total_session_time_ms": kwargs.get("total_session_time_ms"),
+            "total_interactions": kwargs.get("total_interactions")
+        })
     
     def estimate_cost_from_text(self, model_name, input_text, output_text):
         # Rough cost estimation for GPT-4o-mini
@@ -65,11 +143,8 @@ class MockAgentAnalyticsTracker:
         return cost
 
 def configure_agent_analytics(**kwargs):
-    """Mock configure function."""
-    print("📊 Analytics configured (mock)")
-
-# Use mock analytics
-AgentAnalyticsTracker = MockAgentAnalyticsTracker
+    """Configure Amplitude analytics."""
+    print(f"📊 Amplitude Analytics configured with key: {kwargs.get('custom_api_key', 'N/A')[:8] if kwargs.get('custom_api_key') else 'N/A'}...")
 
 # Mock run context for demonstration - in production, use actual LangleyRunContext
 @dataclass
@@ -175,7 +250,7 @@ class WebSearchAgent:
         
         # Initialize mock run context
         self.run_context = MockRunContext(session=MockSession())
-        self.analytics_tracker = AgentAnalyticsTracker(self.run_context)
+        self.analytics_tracker = AgentAnalyticsTracker(self.run_context, amplitude_api_key)
         
         # Initialize OpenAI
         self.llm = ChatOpenAI(
