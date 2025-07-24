@@ -41,15 +41,22 @@ from amplitude import Amplitude, BaseEvent
 
 class AgentAnalyticsTracker:
     """Real analytics tracker using Amplitude."""
-    def __init__(self, run_context, api_key="demo_key"):
+    def __init__(self, run_context, api_key="demo_key", server_url=None):
         self.run_context = run_context
         self.api_key = api_key
+        self.server_url = server_url
         
         # Initialize Amplitude client
         if api_key and api_key != "demo_key":
-            self.client = Amplitude(api_key)
+            # Configure Amplitude client with custom server URL if provided
+            if server_url:
+                self.client = Amplitude(api_key)
+                self.client.configuration.server_url = server_url
+                print(f"📊 Amplitude Analytics initialized with API key: {api_key[:8]}... and custom server URL: {server_url}")
+            else:
+                self.client = Amplitude(api_key)
+                print(f"📊 Amplitude Analytics initialized with API key: {api_key[:8]}...")
             self.enabled = True
-            print(f"📊 Amplitude Analytics initialized with API key: {api_key[:8]}...")
         else:
             self.client = None
             self.enabled = False
@@ -311,12 +318,14 @@ class WebSearchAgent:
         openai_api_key: str,
         amplitude_api_key: str = "demo_key",
         model_name: str = "gpt-4o-mini",
-        temperature: float = 0.1
+        temperature: float = 0.1,
+        amplitude_server_url: str = None
     ):
         self.openai_api_key = openai_api_key
         self.amplitude_api_key = amplitude_api_key
         self.model_name = model_name
         self.temperature = temperature
+        self.amplitude_server_url = amplitude_server_url
         
         # Configure Amplitude analytics
         configure_agent_analytics(
@@ -328,7 +337,11 @@ class WebSearchAgent:
         
         # Initialize mock run context
         self.run_context = MockRunContext(session=MockSession())
-        self.analytics_tracker = AgentAnalyticsTracker(self.run_context, amplitude_api_key)
+        self.analytics_tracker = AgentAnalyticsTracker(
+            self.run_context, 
+            amplitude_api_key, 
+            server_url=amplitude_server_url
+        )
         
         # Test Amplitude connection
         if amplitude_api_key != "demo_key":
@@ -554,6 +567,11 @@ def main():
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Should be set in your environment
     AMPLITUDE_API_KEY = "YOUR_AMPLITUDE_API_KEY_HERE"  # 👈 REPLACE WITH YOUR AMPLITUDE API KEY
     
+    # Local Amplitude backend configuration (optional)
+    # Uncomment and modify the line below to point to your local Amplitude backend
+    # LOCAL_AMPLITUDE_URL = "http://localhost:8080/amplitude"  # 👈 REPLACE WITH YOUR LOCAL AMPLITUDE BACKEND URL
+    LOCAL_AMPLITUDE_URL = None  # Set to None to use default Amplitude servers
+    
     # Optional: SerpAPI for Google Search (more reliable than DuckDuckGo)
     SERPAPI_KEY = os.getenv("SERPAPI_API_KEY")  # Optional - get from https://serpapi.com/
     USE_SERPAPI = bool(SERPAPI_KEY)
@@ -570,6 +588,10 @@ def main():
         print("Analytics events will still be generated but may not be sent successfully")
         print()
     
+    if LOCAL_AMPLITUDE_URL:
+        print(f"🌐 Using local Amplitude backend: {LOCAL_AMPLITUDE_URL}")
+        print()
+    
     # Initialize the agent
     print("🚀 Initializing Web Search Agent...")
     agent = WebSearchAgent(
@@ -577,6 +599,7 @@ def main():
         amplitude_api_key=AMPLITUDE_API_KEY,
         model_name="gpt-4o-mini",  # Fast and cost-effective
         temperature=0.1,  # Low temperature for factual responses
+        amplitude_server_url=LOCAL_AMPLITUDE_URL  # 👈 Pass your local Amplitude URL here
     )
     
     # Start conversation

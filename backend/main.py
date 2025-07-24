@@ -35,12 +35,14 @@ def get_web_agent():
             )
         
         amplitude_api_key = os.getenv("AMPLITUDE_API_KEY", "demo_key")
+        amplitude_server_url = os.getenv("AMPLITUDE_SERVER_URL")  # Optional: for local development
         
         web_agent = WebSearchAgent(
             openai_api_key=openai_api_key,
             amplitude_api_key=amplitude_api_key,
             model_name="gpt-4o-mini",
-            temperature=0.1
+            temperature=0.1,
+            amplitude_server_url=amplitude_server_url
         )
         web_agent.start_conversation()
     
